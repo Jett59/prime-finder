@@ -111,7 +111,7 @@ int main (int argc, char** argv) {
   }
   int targetNumberOfPrimes = atoi(argv[1]);
   while (outputBuffer.size() < targetNumberOfPrimes) {
-    cout << outputBuffer.size() << ": " << outputBuffer.peekBack() << "\t\r";
+    cout << "\r" << outputBuffer.size() << ": " << outputBuffer.peekBack() << "\t";
     this_thread::sleep_for(chrono::milliseconds(100));
   }
   cout << "Stopping worker threads" << endl;
