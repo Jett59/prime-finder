@@ -1,4 +1,4 @@
-CXXFLAGS+=-O3 -pthread -std=c++14
+CXXFLAGS+=-Ofast -pthread -std=c++14
 CXXFLAGS+=-fno-math-errno
 
 a.out: primes.cpp
