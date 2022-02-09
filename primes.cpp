@@ -113,7 +113,8 @@ int main(int argc, char **argv) {
   outputBuffer.push(2); // Only prime not found by the program
   int targetNumberOfPrimes = atoi(argv[1]);
   int numPrimesPerWorker = (targetNumberOfPrimes + numWorkers - 1) / numWorkers;
-  int numPrimes = numPrimesPerWorker * numWorkers;
+  int numPrimes =
+      numPrimesPerWorker * numWorkers + 1; // Don't forget we already added 2
   for (int i = 0; i < numWorkers; i++) {
     volatile WorkerContext &context = contexts[i];
     context.start = i * 2 + 3; // Only odd numbers can be prime (except 2)
