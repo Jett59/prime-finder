@@ -80,6 +80,7 @@ public:
 struct WorkerContext {
   int start;
   int increment;
+  int numPrimes;
   int foundPrimes = 0;
   PrimeOutputBuffer *outputBuffer;
   bool running = false;
@@ -89,17 +90,18 @@ struct WorkerContext {
 int primeFinderWorker(volatile WorkerContext *context) {
   context->running = true;
   int increment = context->increment;
+  int numPrimes = context->numPrimes;
   PrimeOutputBuffer *outputBuffer = context->outputBuffer;
-  for (unsigned long long i = context->start; context->running;
+  for (unsigned long long i = context->start; context->shouldBeRunning;
        i += increment) {
     if (isPrime(i)) {
       outputBuffer->push(i);
-      context->foundPrimes++;
-    }
-    if (!context->shouldBeRunning) {
-      context->running = false;
+      if (++context->foundPrimes >= numPrimes) {
+        break;
+      }
     }
   }
+  context->running = false;
   return 0;
 }
 
@@ -109,15 +111,18 @@ int main(int argc, char **argv) {
   PrimeOutputBuffer outputBuffer;
   cout << "Starting calculation..." << endl;
   outputBuffer.push(2); // Only prime not found by the program
+  int targetNumberOfPrimes = atoi(argv[1]);
+  int numPrimesPerWorker = (targetNumberOfPrimes + numWorkers - 1) / numWorkers;
+  int numPrimes = numPrimesPerWorker * numWorkers;
   for (int i = 0; i < numWorkers; i++) {
     volatile WorkerContext &context = contexts[i];
     context.start = i * 2 + 3; // Only odd numbers can be prime (except 2)
     context.increment = numWorkers * 2;
+    context.numPrimes = numPrimesPerWorker;
     context.outputBuffer = &outputBuffer;
     thread workerThread(primeFinderWorker, &contexts[i]);
     workerThread.detach();
   }
-  int targetNumberOfPrimes = atoi(argv[1]);
   while (outputBuffer.size() < targetNumberOfPrimes) {
     cout << outputBuffer.size() << ": " << outputBuffer.peekBack() << "\t\r";
     cout.flush();
