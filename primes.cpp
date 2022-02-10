@@ -1,8 +1,8 @@
 #include <algorithm>
 #include <atomic>
 #include <cmath>
+#include <cstdint>
 #include <cstdlib>
-#include <deque>
 #include <fstream>
 #include <iostream>
 #include <string>
@@ -28,53 +28,26 @@ template <typename IntType> static constexpr inline bool isPrime(IntType n) {
 
 using namespace std;
 
-class SpinLock {
-private:
-  atomic_flag flag = ATOMIC_FLAG_INIT;
-
-public:
-  void acquire() {
-    while (flag.test_and_set(memory_order_acquire))
-      ;
-  }
-  void release() { flag.clear(memory_order_release); }
-};
-
 class PrimeOutputBuffer {
 private:
-  SpinLock lock;
-  deque<unsigned long long> theQueue;
+  uint64_t *data;
+  atomic_int64_t numElements;
+  uint64_t maxElementCount;
 
 public:
-  void push(unsigned long long value) {
-    lock.acquire();
-    theQueue.push_back(value);
-    lock.release();
+  typedef uint64_t *iterator;
+  PrimeOutputBuffer(uint64_t maxElements)
+      : data(new uint64_t[maxElements]), maxElementCount(maxElements) {
+    numElements = 0;
   }
-  unsigned long long pop() {
-    lock.acquire();
-    unsigned long long result = theQueue.front();
-    theQueue.pop_front();
-    lock.release();
-    return result;
-  }
-  int size() {
-    lock.acquire();
-    int result = theQueue.size();
-    lock.release();
-    return result;
-  }
-  unsigned long long peekBack() {
-    lock.acquire();
-    unsigned long long result = theQueue.back();
-    lock.release();
-    return result;
-  }
-  void sort() {
-    lock.acquire();
-    std::sort(theQueue.begin(), theQueue.end());
-    lock.release();
-  }
+
+  void push(uint64_t value) { data[atomic_fetch_add(&numElements, 1)] = value; }
+  iterator begin() { return data; }
+  iterator end() { return data + maxElementCount; }
+
+  void sort() { std::sort(begin(), end()); }
+
+  uint64_t size() { return numElements; }
 };
 
 struct WorkerContext {
@@ -102,13 +75,13 @@ int primeFinderWorker(WorkerContext *context) {
 int main(int argc, char **argv) {
   auto numWorkers = thread::hardware_concurrency();
   WorkerContext contexts[numWorkers];
-  PrimeOutputBuffer outputBuffer;
-  cout << "Starting calculation..." << endl;
-  outputBuffer.push(2); // Only prime not found by the program
   int targetNumberOfPrimes = atoi(argv[1]);
   int numPrimesPerWorker = (targetNumberOfPrimes + numWorkers - 1) / numWorkers;
   int numPrimes =
       numPrimesPerWorker * numWorkers + 1; // Don't forget we already added 2
+  PrimeOutputBuffer outputBuffer(numPrimes);
+  cout << "Starting calculation..." << endl;
+  outputBuffer.push(2); // Only prime not found by the program
   for (int i = 0; i < numWorkers; i++) {
     WorkerContext &context = contexts[i];
     context.start = i * 2 + 3; // Only odd numbers can be prime (except 2)
@@ -119,18 +92,17 @@ int main(int argc, char **argv) {
     workerThread.detach();
   }
   while (outputBuffer.size() < numPrimes) {
-    cout << outputBuffer.size() << ": " << outputBuffer.peekBack() << "\t\r";
+    cout << outputBuffer.size() << "\t\r";
     cout.flush();
     this_thread::sleep_for(chrono::milliseconds(500));
   }
-  cout << "Found " << outputBuffer.size() << " primes" << endl;
   cout << "Sorting..." << endl;
   outputBuffer.sort();
-  cout << "Last prime: " << outputBuffer.peekBack() << endl;
   cout << "Building textual representation..." << endl;
   string outputString = "";
-  for (int i = 0; outputBuffer.size() > 0; i++) {
-    outputString += to_string(outputBuffer.pop());
+  for (PrimeOutputBuffer::iterator iterator = outputBuffer.begin();
+       iterator != outputBuffer.end(); iterator++) {
+    outputString += to_string(*iterator);
     outputString += '\n';
   }
   cout << "Writing to 'primes.txt'..." << endl;
