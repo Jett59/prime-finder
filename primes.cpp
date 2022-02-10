@@ -81,33 +81,27 @@ struct WorkerContext {
   int start;
   int increment;
   int numPrimes;
-  int foundPrimes = 0;
   PrimeOutputBuffer *outputBuffer;
-  bool running = false;
-  bool shouldBeRunning = true;
 };
 
-int primeFinderWorker(volatile WorkerContext *context) {
-  context->running = true;
+int primeFinderWorker(WorkerContext *context) {
   int increment = context->increment;
   int numPrimes = context->numPrimes;
   PrimeOutputBuffer *outputBuffer = context->outputBuffer;
-  for (unsigned long long i = context->start; context->shouldBeRunning;
+  int foundPrimes = 0;
+  for (unsigned long long i = context->start; foundPrimes < numPrimes;
        i += increment) {
     if (isPrime(i)) {
       outputBuffer->push(i);
-      if (++context->foundPrimes >= numPrimes) {
-        break;
-      }
+      foundPrimes++;
     }
   }
-  context->running = false;
   return 0;
 }
 
 int main(int argc, char **argv) {
   auto numWorkers = thread::hardware_concurrency();
-  volatile WorkerContext contexts[numWorkers];
+  WorkerContext contexts[numWorkers];
   PrimeOutputBuffer outputBuffer;
   cout << "Starting calculation..." << endl;
   outputBuffer.push(2); // Only prime not found by the program
@@ -116,7 +110,7 @@ int main(int argc, char **argv) {
   int numPrimes =
       numPrimesPerWorker * numWorkers + 1; // Don't forget we already added 2
   for (int i = 0; i < numWorkers; i++) {
-    volatile WorkerContext &context = contexts[i];
+    WorkerContext &context = contexts[i];
     context.start = i * 2 + 3; // Only odd numbers can be prime (except 2)
     context.increment = numWorkers * 2;
     context.numPrimes = numPrimesPerWorker;
@@ -124,18 +118,10 @@ int main(int argc, char **argv) {
     thread workerThread(primeFinderWorker, &contexts[i]);
     workerThread.detach();
   }
-  while (outputBuffer.size() < targetNumberOfPrimes) {
+  while (outputBuffer.size() < numPrimes) {
     cout << outputBuffer.size() << ": " << outputBuffer.peekBack() << "\t\r";
     cout.flush();
-    this_thread::sleep_for(chrono::milliseconds(100));
-  }
-  cout << "Stopping worker threads" << endl;
-  for (int i = 0; i < numWorkers; i++) {
-    contexts[i].shouldBeRunning = false;
-    cout << "Stopping worker thread " << i << ": ";
-    while (contexts[i].running)
-      ;
-    cout << "Done (it found " << contexts[i].foundPrimes << " primes)" << endl;
+    this_thread::sleep_for(chrono::milliseconds(500));
   }
   cout << "Found " << outputBuffer.size() << " primes" << endl;
   cout << "Sorting..." << endl;
